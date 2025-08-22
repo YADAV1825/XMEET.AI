@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: "Meet.AI",
   description: "Build and interact with powerful AI agents effortlessly.",
   keywords: ["AI agents", "Meet.AI", "AI platform", "chatbot builder", "open source AI"],
-  authors: [{ name: "Dheeraj Appaji" }],
+  authors: [{ name: "Rohit Yadav" }],
   icons: {
     icon: "/logo.svg", // Update with your favicon path if different
   },
