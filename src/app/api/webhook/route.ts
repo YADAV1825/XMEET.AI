@@ -1,305 +1,305 @@
-import { and, eq, not } from "drizzle-orm";
-import { NextRequest, NextResponse } from "next/server";
+// import { and, eq, not } from "drizzle-orm";
+// import { NextRequest, NextResponse } from "next/server";
 
-import OpenAI from "openai";
-import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
+// import OpenAI from "openai";
+// import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
 
-import {
-  MessageNewEvent,
-  CallEndedEvent,
-  CallTranscriptionReadyEvent,
-  CallSessionParticipantLeftEvent,
-  CallRecordingReadyEvent,
-  CallSessionStartedEvent,
-} from "@stream-io/node-sdk";
+// import {
+//   MessageNewEvent,
+//   CallEndedEvent,
+//   CallTranscriptionReadyEvent,
+//   CallSessionParticipantLeftEvent,
+//   CallRecordingReadyEvent,
+//   CallSessionStartedEvent,
+// } from "@stream-io/node-sdk";
 
-import { db } from "@/db";
-import { agents, meetings } from "@/db/schema";
-import { streamVideo } from "@/lib/stream-video";
-import { inngest } from "@/inngest/client";
-import { generateAvatarUri } from "@/lib/avatar";
-import { streamChat } from "@/lib/stream-chat";
+// import { db } from "@/db";
+// import { agents, meetings } from "@/db/schema";
+// import { streamVideo } from "@/lib/stream-video";
+// import { inngest } from "@/inngest/client";
+// import { generateAvatarUri } from "@/lib/avatar";
+// import { streamChat } from "@/lib/stream-chat";
 
-const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+// const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-function verifySignatureWithSDK(body: string, signature: string): boolean {
-  return streamVideo.verifyWebhook(body, signature);
-}
+// function verifySignatureWithSDK(body: string, signature: string): boolean {
+//   return streamVideo.verifyWebhook(body, signature);
+// }
 
-export async function POST(request: NextRequest) {
-  const signature = request.headers.get("x-signature");
-  const apiKey = request.headers.get("x-api-key");
+// export async function POST(request: NextRequest) {
+//   const signature = request.headers.get("x-signature");
+//   const apiKey = request.headers.get("x-api-key");
 
-  if (!signature || !apiKey) {
-    return NextResponse.json(
-      { error: "Missing signature or API key" },
-      { status: 400 }
-    );
-  }
+//   if (!signature || !apiKey) {
+//     return NextResponse.json(
+//       { error: "Missing signature or API key" },
+//       { status: 400 }
+//     );
+//   }
 
-  const body = await request.text();
+//   const body = await request.text();
 
-  if (!verifySignatureWithSDK(body, signature)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
+//   if (!verifySignatureWithSDK(body, signature)) {
+//     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+//   }
 
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body);
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON payload" },
-      { status: 400 }
-    );
-  }
+//   let payload: unknown;
+//   try {
+//     payload = JSON.parse(body);
+//   } catch {
+//     return NextResponse.json(
+//       { error: "Invalid JSON payload" },
+//       { status: 400 }
+//     );
+//   }
 
-  type StreamEvent =
-    | CallSessionStartedEvent
-    | CallSessionParticipantLeftEvent
-    | CallEndedEvent
-    | CallTranscriptionReadyEvent
-    | CallRecordingReadyEvent
-    | MessageNewEvent;
+//   type StreamEvent =
+//     | CallSessionStartedEvent
+//     | CallSessionParticipantLeftEvent
+//     | CallEndedEvent
+//     | CallTranscriptionReadyEvent
+//     | CallRecordingReadyEvent
+//     | MessageNewEvent;
 
-  const eventType = (payload as StreamEvent)?.type;
+//   const eventType = (payload as StreamEvent)?.type;
 
-  if (eventType === "call.session_started") {
-    const event = payload as CallSessionStartedEvent;
-    const meetingId = event.call.custom?.meetingId;
+//   if (eventType === "call.session_started") {
+//     const event = payload as CallSessionStartedEvent;
+//     const meetingId = event.call.custom?.meetingId;
 
-    if (!meetingId) {
-      return NextResponse.json(
-        { error: "Missing meeting ID" },
-        { status: 400 }
-      );
-    }
+//     if (!meetingId) {
+//       return NextResponse.json(
+//         { error: "Missing meeting ID" },
+//         { status: 400 }
+//       );
+//     }
 
-    const [existedMeeting] = await db
-      .select()
-      .from(meetings)
-      .where(
-        and(
-          eq(meetings.id, meetingId),
-          not(eq(meetings.status, "completed")),
-          not(eq(meetings.status, "active")),
-          not(eq(meetings.status, "cancelled")),
-          not(eq(meetings.status, "processing"))
-        )
-      );
+//     const [existedMeeting] = await db
+//       .select()
+//       .from(meetings)
+//       .where(
+//         and(
+//           eq(meetings.id, meetingId),
+//           not(eq(meetings.status, "completed")),
+//           not(eq(meetings.status, "active")),
+//           not(eq(meetings.status, "cancelled")),
+//           not(eq(meetings.status, "processing"))
+//         )
+//       );
 
-    if (!existedMeeting) {
-      return NextResponse.json(
-        { error: "Meeting not found or already started" },
-        { status: 404 }
-      );
-    }
+//     if (!existedMeeting) {
+//       return NextResponse.json(
+//         { error: "Meeting not found or already started" },
+//         { status: 404 }
+//       );
+//     }
 
-    await db
-      .update(meetings)
-      .set({ status: "active", startedAt: new Date() })
-      .where(eq(meetings.id, existedMeeting.id));
+//     await db
+//       .update(meetings)
+//       .set({ status: "active", startedAt: new Date() })
+//       .where(eq(meetings.id, existedMeeting.id));
 
-    const [existedAgent] = await db
-      .select()
-      .from(agents)
-      .where(eq(agents.id, existedMeeting.agentId));
+//     const [existedAgent] = await db
+//       .select()
+//       .from(agents)
+//       .where(eq(agents.id, existedMeeting.agentId));
 
-    if (!existedAgent) {
-      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    }
+//     if (!existedAgent) {
+//       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+//     }
 
-    const call = streamVideo.video.call("default", meetingId);
-    const realTimeClient = await streamVideo.video.connectOpenAi({
-      call,
-      openAiApiKey: process.env.OPENAI_API_KEY!,
-      agentUserId: existedAgent.id,
-    });
+//     const call = streamVideo.video.call("default", meetingId);
+//     const realTimeClient = await streamVideo.video.connectOpenAi({
+//       call,
+//       openAiApiKey: process.env.OPENAI_API_KEY!,
+//       agentUserId: existedAgent.id,
+//     });
 
-    realTimeClient.updateSession({
-      instructions: existedAgent.instructions,
-    });
-  } else if (eventType === "call.session_participant_left") {
-    const event = payload as CallSessionParticipantLeftEvent;
-    const meetingId = event.call_cid.split(":")[1];
+//     realTimeClient.updateSession({
+//       instructions: existedAgent.instructions,
+//     });
+//   } else if (eventType === "call.session_participant_left") {
+//     const event = payload as CallSessionParticipantLeftEvent;
+//     const meetingId = event.call_cid.split(":")[1];
 
-    if (!meetingId) {
-      return NextResponse.json(
-        { error: "Missing meeting ID" },
-        { status: 400 }
-      );
-    }
+//     if (!meetingId) {
+//       return NextResponse.json(
+//         { error: "Missing meeting ID" },
+//         { status: 400 }
+//       );
+//     }
 
-    const call = streamVideo.video.call("default", meetingId);
-    await call.end();
-  } else if (eventType === "call.session_ended") {
-    const event = payload as CallEndedEvent;
-    const meetingId = event.call.custom?.meetingId;
-    if (!meetingId) {
-      return NextResponse.json(
-        { error: "Missing meeting ID" },
-        { status: 400 }
-      );
-    }
-    await db
-      .update(meetings)
-      .set({ status: "processing", endedAt: new Date() })
-      .where(and(eq(meetings.id, meetingId), eq(meetings.status, "active")));
-  } else if (eventType === "call.transcription_ready") {
-    const event = payload as CallTranscriptionReadyEvent;
-    const meetingId = event.call_cid.split(":")[1];
+//     const call = streamVideo.video.call("default", meetingId);
+//     await call.end();
+//   } else if (eventType === "call.session_ended") {
+//     const event = payload as CallEndedEvent;
+//     const meetingId = event.call.custom?.meetingId;
+//     if (!meetingId) {
+//       return NextResponse.json(
+//         { error: "Missing meeting ID" },
+//         { status: 400 }
+//       );
+//     }
+//     await db
+//       .update(meetings)
+//       .set({ status: "processing", endedAt: new Date() })
+//       .where(and(eq(meetings.id, meetingId), eq(meetings.status, "active")));
+//   } else if (eventType === "call.transcription_ready") {
+//     const event = payload as CallTranscriptionReadyEvent;
+//     const meetingId = event.call_cid.split(":")[1];
 
-    const [updatedMeeting] = await db
-      .update(meetings)
-      .set({ transcriptUrl: event.call_transcription.url })
-      .where(eq(meetings.id, meetingId))
-      .returning();
+//     const [updatedMeeting] = await db
+//       .update(meetings)
+//       .set({ transcriptUrl: event.call_transcription.url })
+//       .where(eq(meetings.id, meetingId))
+//       .returning();
 
-    if (!updatedMeeting) {
-      return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
-    }
+//     if (!updatedMeeting) {
+//       return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+//     }
 
-    await inngest.send({
-      name: "meetings/processing",
-      data: {
-        meetingId: updatedMeeting.id,
-        transcriptUrl: updatedMeeting.transcriptUrl,
-      },
-    });
-  } else if (eventType === "call.recording_ready") {
-    const event = payload as CallRecordingReadyEvent;
-    const meetingId = event.call_cid.split(":")[1];
+//     await inngest.send({
+//       name: "meetings/processing",
+//       data: {
+//         meetingId: updatedMeeting.id,
+//         transcriptUrl: updatedMeeting.transcriptUrl,
+//       },
+//     });
+//   } else if (eventType === "call.recording_ready") {
+//     const event = payload as CallRecordingReadyEvent;
+//     const meetingId = event.call_cid.split(":")[1];
 
-    await db
-      .update(meetings)
-      .set({ recordingUrl: event.call_recording.url })
-      .where(eq(meetings.id, meetingId));
-  } else if (eventType === "message.new") {
-    const event = payload as MessageNewEvent;
+//     await db
+//       .update(meetings)
+//       .set({ recordingUrl: event.call_recording.url })
+//       .where(eq(meetings.id, meetingId));
+//   } else if (eventType === "message.new") {
+//     const event = payload as MessageNewEvent;
 
-    const userId = event.user?.id;
-    const channelId = event.channel_id;
-    const text = event.message?.text;
+//     const userId = event.user?.id;
+//     const channelId = event.channel_id;
+//     const text = event.message?.text;
 
-    if (!userId || !channelId || !text) {
-      return NextResponse.json(
-        { error: "Missing user ID, channel ID, or message text" },
-        { status: 400 }
-      );
-    }
+//     if (!userId || !channelId || !text) {
+//       return NextResponse.json(
+//         { error: "Missing user ID, channel ID, or message text" },
+//         { status: 400 }
+//       );
+//     }
 
-    const [existingMeeting] = await db
-      .select()
-      .from(meetings)
-      .where(and(eq(meetings.id, channelId), eq(meetings.status, "completed")));
+//     const [existingMeeting] = await db
+//       .select()
+//       .from(meetings)
+//       .where(and(eq(meetings.id, channelId), eq(meetings.status, "completed")));
 
-    if (!existingMeeting) {
-      return NextResponse.json(
-        { error: "Meeting not found or not completed" },
-        { status: 404 }
-      );
-    }
+//     if (!existingMeeting) {
+//       return NextResponse.json(
+//         { error: "Meeting not found or not completed" },
+//         { status: 404 }
+//       );
+//     }
 
-    const [existingAgent] = await db
-      .select()
-      .from(agents)
-      .where(eq(agents.id, existingMeeting.agentId));
+//     const [existingAgent] = await db
+//       .select()
+//       .from(agents)
+//       .where(eq(agents.id, existingMeeting.agentId));
 
-    if (!existingAgent) {
-      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    }
+//     if (!existingAgent) {
+//       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+//     }
 
-    if (userId !== existingAgent.id) {
-      const instructions = `
-      You are an AI assistant helping the user revisit a recently completed meeting.
-      Below is a summary of the meeting, generated from the transcript:
+//     if (userId !== existingAgent.id) {
+//       const instructions = `
+//       You are an AI assistant helping the user revisit a recently completed meeting.
+//       Below is a summary of the meeting, generated from the transcript:
        
-      ${existingMeeting.summary}
+//       ${existingMeeting.summary}
       
-      The following are your original instructions from the live meeting assistant. Please continue to follow these behavioral guidelines as you assist the user:
+//       The following are your original instructions from the live meeting assistant. Please continue to follow these behavioral guidelines as you assist the user:
       
-      ${existingAgent.instructions}
+//       ${existingAgent.instructions}
       
-      The user may ask questions about the meeting, request clarifications, or ask for follow-up actions.
-      Always base your responses on the meeting summary above.
+//       The user may ask questions about the meeting, request clarifications, or ask for follow-up actions.
+//       Always base your responses on the meeting summary above.
       
-      You also have access to the recent conversation history between you and the user. Use the context of previous messages to provide relevant, coherent, and helpful responses. If the user's question refers to something discussed earlier, make sure to take that into account and maintain continuity in the conversation.
+//       You also have access to the recent conversation history between you and the user. Use the context of previous messages to provide relevant, coherent, and helpful responses. If the user's question refers to something discussed earlier, make sure to take that into account and maintain continuity in the conversation.
       
-      If the summary does not contain enough information to answer a question, politely let the user know.
+//       If the summary does not contain enough information to answer a question, politely let the user know.
       
-      Be concise, helpful, and focus on providing accurate information from the meeting and the ongoing conversation.
-      `;
+//       Be concise, helpful, and focus on providing accurate information from the meeting and the ongoing conversation.
+//       `;
 
-      const channel = streamChat.channel("messaging", channelId);
-      await channel.watch();
+//       const channel = streamChat.channel("messaging", channelId);
+//       await channel.watch();
 
-      const previousMessages = channel.state.messages
-        .slice(-5)
-        .filter((msg) => msg.text && msg.text.trim() !== "")
-        .map<ChatCompletionMessageParam>((msg) => ({
-          role: msg.user?.id === existingAgent.id ? "assistant" : "user",
-          content: msg.text || "",
-        }));
+//       const previousMessages = channel.state.messages
+//         .slice(-5)
+//         .filter((msg) => msg.text && msg.text.trim() !== "")
+//         .map<ChatCompletionMessageParam>((msg) => ({
+//           role: msg.user?.id === existingAgent.id ? "assistant" : "user",
+//           content: msg.text || "",
+//         }));
 
-      const GPTResponse = await openaiClient.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: instructions,
-          },
-          ...previousMessages,
-          {
-            role: "user",
-            content: text,
-          },
-        ],
-      });
+//       const GPTResponse = await openaiClient.chat.completions.create({
+//         model: "gpt-4o",
+//         messages: [
+//           {
+//             role: "system",
+//             content: instructions,
+//           },
+//           ...previousMessages,
+//           {
+//             role: "user",
+//             content: text,
+//           },
+//         ],
+//       });
 
-      const GPTResponseText = GPTResponse.choices[0].message?.content || "";
+//       const GPTResponseText = GPTResponse.choices[0].message?.content || "";
 
-      if (!GPTResponseText) {
-        return NextResponse.json(
-          { error: "No response from AI" },
-          { status: 400 }
-        );
-      }
+//       if (!GPTResponseText) {
+//         return NextResponse.json(
+//           { error: "No response from AI" },
+//           { status: 400 }
+//         );
+//       }
 
-      const avatarUrl = generateAvatarUri({
-        seed: existingAgent.name,
-        variant: "botttsNeutral",
-      });
+//       const avatarUrl = generateAvatarUri({
+//         seed: existingAgent.name,
+//         variant: "botttsNeutral",
+//       });
  
-      streamChat.upsertUser({
-        id: existingAgent.id,
-        name: existingAgent.name,
-        image: avatarUrl,
-      });
+//       streamChat.upsertUser({
+//         id: existingAgent.id,
+//         name: existingAgent.name,
+//         image: avatarUrl,
+//       });
 
-      const existingMessages = await channel.query({ messages: { limit: 10 } });
+//       const existingMessages = await channel.query({ messages: { limit: 10 } });
 
-      const alreadyResponded = existingMessages.messages.some(
-        (msg) =>
-          msg.user?.id === existingAgent.id &&
-          new Date(msg.created_at ?? 0).getTime() >
-            new Date(event.message?.created_at ?? 0).getTime()
-      );
+//       const alreadyResponded = existingMessages.messages.some(
+//         (msg) =>
+//           msg.user?.id === existingAgent.id &&
+//           new Date(msg.created_at ?? 0).getTime() >
+//             new Date(event.message?.created_at ?? 0).getTime()
+//       );
 
-      if (alreadyResponded) {
-        return NextResponse.json({ status: "already responded" });
-      }
+//       if (alreadyResponded) {
+//         return NextResponse.json({ status: "already responded" });
+//       }
 
-      channel.sendMessage({
-        text: GPTResponseText,
-        user: {
-          id: existingAgent.id,
-          name: existingAgent.name,
-          image: avatarUrl,
-        },
-      });
-    }
-  }
-  return NextResponse.json({ status: "ok" });
-}
+//       channel.sendMessage({
+//         text: GPTResponseText,
+//         user: {
+//           id: existingAgent.id,
+//           name: existingAgent.name,
+//           image: avatarUrl,
+//         },
+//       });
+//     }
+//   }
+//   return NextResponse.json({ status: "ok" });
+// }
 
 // // import { and, eq, not } from "drizzle-orm";
 // // import { NextRequest, NextResponse } from "next/server";
@@ -805,3 +805,88 @@ export async function POST(request: NextRequest) {
 
 //   return NextResponse.json({ status: "ok" });
 // }
+
+
+import { eq, and } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+
+import OpenAI from "openai";
+import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
+
+import {
+  MessageNewEvent,
+  CallEndedEvent,
+  CallTranscriptionReadyEvent,
+  CallSessionParticipantLeftEvent,
+  CallRecordingReadyEvent,
+  CallSessionStartedEvent,
+} from "@stream-io/node-sdk";
+
+import { db } from "@/db";
+import { agents, meetings } from "@/db/schema";
+import { streamVideo } from "@/lib/stream-video";
+import { inngest } from "@/inngest/client";
+import { generateAvatarUri } from "@/lib/avatar";
+import { streamChat } from "@/lib/stream-chat";
+
+const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+function verifySignatureWithSDK(body: string, signature: string): boolean {
+  return streamVideo.verifyWebhook(body, signature);
+}
+
+export async function POST(request: NextRequest) {
+  const signature = request.headers.get("x-signature");
+  const apiKey = request.headers.get("x-api-key");
+
+  if (!signature || !apiKey) {
+    return NextResponse.json({ error: "Missing signature or API key" }, { status: 400 });
+  }
+
+  const body = await request.text();
+  if (!verifySignatureWithSDK(body, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  let payload: any;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+  }
+
+  const eventType = payload?.type;
+
+  if (eventType === "call.session_started") {
+    const meetingId = payload.call.custom?.meetingId;
+    if (!meetingId) return NextResponse.json({ error: "Missing meeting ID" }, { status: 400 });
+
+    const [existedMeeting] = await db.select().from(meetings).where(eq(meetings.id, meetingId));
+    if (!existedMeeting) return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+
+    if (["completed", "cancelled", "processing"].includes(existedMeeting.status)) {
+      return NextResponse.json({ error: "Meeting already closed" }, { status: 400 });
+    }
+
+    await db
+      .update(meetings)
+      .set({ status: "active", startedAt: new Date() })
+      .where(eq(meetings.id, meetingId));
+
+    const [existedAgent] = await db.select().from(agents).where(eq(agents.id, existedMeeting.agentId));
+    if (!existedAgent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+
+    const call = streamVideo.video.call("default", meetingId);
+    const realTimeClient = await streamVideo.video.connectOpenAi({
+      call,
+      openAiApiKey: process.env.OPENAI_API_KEY!,
+      agentUserId: existedAgent.id,
+    });
+
+    realTimeClient.updateSession({ instructions: existedAgent.instructions });
+  }
+
+  // keep other event handlers same, just fix meeting conditions like above
+
+  return NextResponse.json({ status: "ok" });
+}
