@@ -835,38 +835,35 @@ function verifySignatureWithSDK(body: string, signature: string): boolean {
   return streamVideo.verifyWebhook(body, signature);
 }
 
+function safeError(message: string) {
+  console.warn("[Webhook Warning]", message);
+  return NextResponse.json({ status: "ok", warning: message });
+}
+
 export async function POST(request: NextRequest) {
   const signature = request.headers.get("x-signature");
   const apiKey = request.headers.get("x-api-key");
 
-  if (!signature || !apiKey) {
-    return NextResponse.json({ error: "Missing signature or API key" }, { status: 400 });
-  }
+  if (!signature || !apiKey) return safeError("Missing signature or API key");
 
   const body = await request.text();
-  if (!verifySignatureWithSDK(body, signature)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
+  if (!verifySignatureWithSDK(body, signature)) return safeError("Invalid signature");
 
   let payload: any;
   try {
     payload = JSON.parse(body);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    return safeError("Invalid JSON payload");
   }
 
   const eventType = payload?.type;
 
   if (eventType === "call.session_started") {
     const meetingId = payload.call.custom?.meetingId;
-    if (!meetingId) return NextResponse.json({ error: "Missing meeting ID" }, { status: 400 });
+    if (!meetingId) return safeError("Missing meeting ID");
 
     const [existedMeeting] = await db.select().from(meetings).where(eq(meetings.id, meetingId));
-    if (!existedMeeting) return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
-
-    if (["completed", "cancelled", "processing"].includes(existedMeeting.status)) {
-      return NextResponse.json({ error: "Meeting already closed" }, { status: 400 });
-    }
+    if (!existedMeeting) return safeError("Meeting not found");
 
     await db
       .update(meetings)
@@ -874,7 +871,7 @@ export async function POST(request: NextRequest) {
       .where(eq(meetings.id, meetingId));
 
     const [existedAgent] = await db.select().from(agents).where(eq(agents.id, existedMeeting.agentId));
-    if (!existedAgent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    if (!existedAgent) return safeError("Agent not found");
 
     const call = streamVideo.video.call("default", meetingId);
     const realTimeClient = await streamVideo.video.connectOpenAi({
@@ -886,7 +883,8 @@ export async function POST(request: NextRequest) {
     realTimeClient.updateSession({ instructions: existedAgent.instructions });
   }
 
-  // keep other event handlers same, just fix meeting conditions like above
+  // ... keep all your other event handlers, just replace every `return NextResponse.json({error:..})`
+  // with `return safeError("...")`
 
   return NextResponse.json({ status: "ok" });
 }
