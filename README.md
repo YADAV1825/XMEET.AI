@@ -6,6 +6,7 @@ Meet.AI is a powerful, full-stack AI platform designed to help users create, man
   <img src="public/logo.svg" width="200" alt="Logo" />
 </p>
 
+<img width="1919" height="945" alt="image" src="https://github.com/user-attachments/assets/1e94904c-1ce3-49c3-af1f-71fff328e7db" />
 
 ## 🎯 Key Features
 
