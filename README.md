@@ -37,10 +37,10 @@ TypeScript → Strongly typed JavaScript for better reliability.
 
 # 🔋 Features <a name="features"></a>
 
-✔️ AI Voice Tutors – Students can talk to subject-specific AI tutors.
-✔️ Session Scheduling – Book a study session in advance.
-✔️ Authentication – Secure login & user profiles with Clerk.
-✔️ Subscriptions & Billing – Stripe-powered payment plans for premium features.
-✔️ Cross-Device Support – Works seamlessly on mobile, tablet, and desktop.
-✔️ Real-Time Database – Session tracking and updates via Supabase.
-✔️ Modern UI/UX – Clean, responsive design with Tailwind + shadcn UI.
+ - AI Voice Tutors – Students can talk to subject-specific AI tutors.
+ - Session Scheduling – Book a study session in advance.
+ - Authentication – Secure login & user profiles with Clerk.
+ - Subscriptions & Billing – Stripe-powered payment plans for premium features.
+ - Cross-Device Support – Works seamlessly on mobile, tablet, and desktop.
+ - Real-Time Database – Session tracking and updates via Supabase.
+ - Modern UI/UX – Clean, responsive design with Tailwind + shadcn UI.
